@@ -1,0 +1,13 @@
+# Virtual environment
+venv/
+.venv/
+
+# Python bytecode
+*.pyc
+__pycache__/
+
+# Uploads folder
+uploads/
+
+# OS generated files
+.DS_Store
