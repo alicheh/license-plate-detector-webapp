@@ -12,3 +12,6 @@ watchdog==6.0.0
 # torch==2.6.0
 # libgl1-mesa-glx
 # libglib2.0-0
+libgl1
+libglx-mesa0
+libglib2.0-0
