@@ -9,6 +9,6 @@ pandas==2.2.3
 ultralytics==8.3.81
 streamlit==1.42.2
 watchdog==6.0.0
-torch==2.6.0
-libgl1-mesa-glx
-libglib2.0-0
+# torch==2.6.0
+# libgl1-mesa-glx
+# libglib2.0-0
