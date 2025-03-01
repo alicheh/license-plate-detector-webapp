@@ -83,8 +83,8 @@ sympy==1.13.1
 tensorboard==2.18.0
 tensorboard-data-server==0.7.2
 tensorflow==2.18.0
-tensorflow-io-gcs-filesystem==0.37.1
-tensorflow-metal==1.2.0
+
+
 termcolor==2.5.0
 threadpoolctl==3.5.0
 torch==2.6.0
