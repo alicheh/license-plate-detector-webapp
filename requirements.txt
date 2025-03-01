@@ -1,4 +1,3 @@
-# filepath: /Users/alicheh/DevProjects/ai/quera_p2/web-app/requirements.txt
 Flask==3.1.0
 gunicorn==23.0.0
 numpy==2.0.2
@@ -9,9 +8,4 @@ pandas==2.2.3
 ultralytics==8.3.81
 streamlit==1.42.2
 watchdog==6.0.0
-# torch==2.6.0
-# libgl1-mesa-glx
-# libglib2.0-0
-libgl1
-libglx-mesa0
-libglib2.0-0
+
