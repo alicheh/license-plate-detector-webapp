@@ -1,26 +1,35 @@
-from flask import Flask, request, render_template, jsonify
+import streamlit as st
 import numpy as np
 import cv2
 import os
-import uuid  # Import the uuid module
+import uuid
 from plate_detection import load_models, preprocess_image, detect_license_plate, crop_license_plate, highlight_license_plate, encode_image
 from crnn_recognition import load_char_to_id_mapping, preprocess_plate, predict_and_decode_plate
-from werkzeug.utils import secure_filename
+from PIL import Image, ImageFont, ImageDraw
+import io
 
-app = Flask(__name__)
+# Create directories if they don't exist
+UPLOAD_FOLDER = "uploads"
+CROPPED_FOLDER = "cropped"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(CROPPED_FOLDER, exist_ok=True)
 
-# Configure upload folder
-UPLOAD_FOLDER = 'uploads'
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Create folder if it doesn't exist
+# Load models (do this only once)
+@st.cache_resource
+def load_models_cached():
+    yolo_model, crnn_model = load_models('models/yolo11s_28feb.pt', 'models/crnn_model_pred_20250225_102044.keras')
+    char_to_id_mapping = load_char_to_id_mapping('models/char_to_id_mapping.csv')
+    return yolo_model, crnn_model, char_to_id_mapping
 
-# Load models
-yolo_model, crnn_model = load_models('models/yolo11s_28feb.pt', 'models/crnn_model_pred_20250225_102044.keras')
-char_to_id_mapping = load_char_to_id_mapping('models/char_to_id_mapping.csv')
+yolo_model, crnn_model, char_to_id_mapping = load_models_cached()
 
-def process_image(image_path, filename=""):
-    # Load the image
+def process_image(image_path):
+    # Load the image from the file path
     image = cv2.imread(image_path)
+
+    if image is None:
+        st.error("Error loading image. Please ensure it's a valid image file.")
+        return None, None, None
 
     # Preprocess the image
     image = preprocess_image(image)
@@ -31,12 +40,17 @@ def process_image(image_path, filename=""):
     # Crop the license plate
     cropped_plate = crop_license_plate(image, max_box)
 
-    # Decode the plate
+    plate_number = None  # Initialize plate_number
+    cropped_image_path = None
     if cropped_plate is not None:
+        # Save the cropped plate to the "cropped" folder
+        cropped_filename = os.path.join(CROPPED_FOLDER, f"cropped_{uuid.uuid4()}.jpg")
+        cv2.imwrite(cropped_filename, cropped_plate)
+        cropped_image_path = cropped_filename
+
         preprocessed_plate = preprocess_plate(cropped_plate)
         if preprocessed_plate is not None:
             prediction_result = predict_and_decode_plate(preprocessed_plate, crnn_model, char_to_id_mapping)
-            print(f"Prediction result: {prediction_result}")
             plate_number = prediction_result['predicted_seq']
         else:
             plate_number = None
@@ -49,42 +63,65 @@ def process_image(image_path, filename=""):
     # Encode the highlighted image
     highlighted_image_base64 = encode_image(highlighted_image)
 
-    if max_box:
-        print(f"processed: {filename}")
-    else:
-        print(f"No box detected: {filename}")
+    return plate_number, highlighted_image_base64, highlighted_image, cropped_image_path
 
-    return plate_number, highlighted_image_base64
+def display_predicted_plate(plate_number):
+    """Displays the predicted plate number with each character in a separate box."""
+    if not plate_number:
+        st.write("No license plate detected.")
+        return
 
-@app.route('/', methods=['GET'])
-def home():
-    return render_template('index.html')
+    num_chars = len(plate_number)
 
-@app.route('/detect', methods=['POST'])
-def detect():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+    # Load Vazirmatn font
+    st.markdown(
+        """
+        <style>
+        @font-face {
+            font-family: 'Vazirmatn';
+            src: url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@29.1.0/dist/Vazirmatn.woff2') format('woff2');
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    # Generate a unique filename
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = str(uuid.uuid4()) + file_extension
-    filename = secure_filename(unique_filename)  # Sanitize the filename
+    # Use columns to create the boxes
+    cols = st.columns(num_chars)  # Create n columns
 
-    # Save the file to the upload folder
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(file_path)
-    
-    # Process the image using your models
-    plate_number, highlighted_image_base64 = process_image(file_path, filename)
-    
-    # Remove the temporary file
-    os.remove(file_path)
-    print("plate_number: ", plate_number)
-    return jsonify({'plate_number': plate_number, 'highlighted_image': highlighted_image_base64})
+    for i, char in enumerate(plate_number):
+        with cols[i]:
+            st.markdown(
+                f"<div style='border: 2px solid black; "
+                f"text-align: center; "
+                f"background-color: #007bff; "  # Change background color color: #007bff
+                f"font-family: Vazirmatn; "  # Change font to Vazirmatn
+                f"font-size: 2em; "
+                f"padding: 5px; "
+                f"width: 100%; "  # Ensure box fills the column
+                f"box-sizing: border-box;'>"  # Include border in width calculation
+                f"{char}</div>",
+                unsafe_allow_html=True,
+            )
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8787, debug=True)
+# Streamlit UI
+st.title("License Plate Detector")
+
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+
+if uploaded_file is not None:
+    # Save the uploaded image to the "uploads" folder
+    image = Image.open(uploaded_file)
+    image_filename = os.path.join(UPLOAD_FOLDER, f"uploaded_{uuid.uuid4()}.jpg")
+    image.save(image_filename)
+
+    # Process the image
+    plate_number, highlighted_image_base64, highlighted_image, cropped_image_path = process_image(image_filename)
+
+    # Display the predicted plate
+    # st.subheader("Predicted License Plate")
+    display_predicted_plate(plate_number)
+
+    # Display the highlighted image
+    # st.subheader("Highlighted License Plate")
+    st.image(highlighted_image, use_container_width=True, channels="BGR")
