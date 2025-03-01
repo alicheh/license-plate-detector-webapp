@@ -1,4 +1,0 @@
-libgl1-mesa-glx
-libsm6   
-libxrender1   
-libxext6 
